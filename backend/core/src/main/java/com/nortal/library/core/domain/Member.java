@@ -20,6 +20,9 @@ public class Member {
   @Column(nullable = false)
   private String name;
 
+  @Column
+  private int loans;
+
   public Member(String id, String name) {
     this.id = id;
     this.name = name;

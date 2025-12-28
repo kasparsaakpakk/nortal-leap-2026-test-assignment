@@ -7,6 +7,7 @@ import com.nortal.library.core.port.MemberRepository;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public class LibraryService {
@@ -33,6 +34,19 @@ public class LibraryService {
       return Result.failure("BORROW_LIMIT");
     }
     Book entity = book.get();
+    if (!entity.getLoanedTo().isEmpty()) {
+      return Result.failure("BOOK_ALREADY_LOANED_OUT");
+    }
+    List<String> reservationQueue = entity.getReservationQueue();
+    if (reservationQueue.contains(memberId) && !Objects.equals(reservationQueue.getFirst(), memberId)) {
+        return Result.failure("MEMBER_NOT_FIRST_IN_QUEUE");
+    }
+    if (memberRepository.findById(memberId).isPresent()) {
+      Member borrower = memberRepository.findById(memberId).get();
+      int currentLoans = borrower.getLoans();
+      borrower.setLoans(currentLoans + 1);
+      memberRepository.save(borrower);
+    }
     entity.setLoanedTo(memberId);
     entity.setDueDate(LocalDate.now().plusDays(DEFAULT_LOAN_DAYS));
     bookRepository.save(entity);
@@ -44,12 +58,32 @@ public class LibraryService {
     if (book.isEmpty()) {
       return ResultWithNext.failure();
     }
-
     Book entity = book.get();
+    if (!Objects.equals(entity.getLoanedTo(), memberId)) {
+      return ResultWithNext.failure();
+    }
     entity.setLoanedTo(null);
     entity.setDueDate(null);
-    String nextMember =
-        entity.getReservationQueue().isEmpty() ? null : entity.getReservationQueue().get(0);
+    String nextMember = "-";
+    List<String> reservationQueue = entity.getReservationQueue();
+    if (entity.getReservationQueue().isEmpty()) {
+      for (int i = 0; i < entity.getReservationQueue().size(); i++) {
+        String currentMemberId = entity.getReservationQueue().get(i);
+        reservationQueue.remove(currentMemberId);
+        if (canMemberBorrow(currentMemberId)) {
+          entity.setLoanedTo(currentMemberId);
+          nextMember = currentMemberId;
+          break;
+        }
+      }
+    }
+    if (memberRepository.findById(memberId).isPresent()) {
+      Member returner = memberRepository.findById(memberId).get();
+      int currentLoans = returner.getLoans();
+      returner.setLoans(currentLoans - 1);
+      memberRepository.save(returner);
+    }
+    entity.setReservationQueue(reservationQueue);
     bookRepository.save(entity);
     return ResultWithNext.success(nextMember);
   }
@@ -62,8 +96,11 @@ public class LibraryService {
     if (!memberRepository.existsById(memberId)) {
       return Result.failure("MEMBER_NOT_FOUND");
     }
-
     Book entity = book.get();
+    List<String> reservationQueue = entity.getReservationQueue();
+    if (reservationQueue.contains(memberId)) {
+      return Result.failure("MEMBER_ALREADY_IN_QUEUE");
+    }
     entity.getReservationQueue().add(memberId);
     bookRepository.save(entity);
     return Result.success();
@@ -91,12 +128,7 @@ public class LibraryService {
     if (!memberRepository.existsById(memberId)) {
       return false;
     }
-    int active = 0;
-    for (Book book : bookRepository.findAll()) {
-      if (memberId.equals(book.getLoanedTo())) {
-        active++;
-      }
-    }
+    int active = memberRepository.findById(memberId).get().getLoans();
     return active < MAX_LOANS;
   }
 
