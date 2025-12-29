@@ -82,10 +82,13 @@ public class LibraryService {
         entity.setLoanedTo(candidateId);
         entity.setDueDate(LocalDate.now().plusDays(DEFAULT_LOAN_DAYS));
 
-        memberRepository.findById(candidateId).ifPresent(loaner -> {
-          loaner.setLoans(Math.min(MAX_LOANS, loaner.getLoans() + 1));
-          memberRepository.save(loaner);
-        });
+        memberRepository
+            .findById(candidateId)
+            .ifPresent(
+                loaner -> {
+                  loaner.setLoans(Math.min(MAX_LOANS, loaner.getLoans() + 1));
+                  memberRepository.save(loaner);
+                });
 
         nextMember = candidateId;
         reservationQueue.remove(i);
